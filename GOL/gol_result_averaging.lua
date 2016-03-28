@@ -7,8 +7,8 @@ require "nn"
 
 
 --learning parameters
-num_training_points = 64
-num_iterations = 200
+num_training_points = 256
+num_iterations = 100
 num_averaging_trials = 100
 initial_learning_rate = 0.01
 learning_rate_decay_multiplier = 0.99
@@ -30,7 +30,7 @@ function three_square_pm_T(i) -- Returns the ith tensor from the enumeration of 
 	new_T = torch.Tensor(9):zero() -1
 	j = 0
 	new_T:apply(function() if math.floor((i-1)/(2^j)) % 2 == 1 then j = j + 1;return 1; else j = j + 1;return 0; end;  end) 
-	return new_T:reshape(3,3)
+	return (new_T:reshape(3,3))*2-1
 end
 
 
@@ -38,10 +38,12 @@ hierarchical_avg_track = torch.Tensor(num_iterations+1):zero()
 hierarchical_sloppy_avg_track = torch.Tensor(num_iterations+1):zero()
 standard_avg_track = torch.Tensor(num_iterations+1):zero()
 standard_ReLU_avg_track = torch.Tensor(num_iterations+1):zero()
+standard_3_avg_track = torch.Tensor(num_iterations+1):zero()
 hierarchical_MSE_avg_track = torch.Tensor(num_iterations+1):zero()
 hierarchical_sloppy_MSE_avg_track = torch.Tensor(num_iterations+1):zero()
 standard_MSE_avg_track = torch.Tensor(num_iterations+1):zero()
 standard_ReLU_MSE_avg_track = torch.Tensor(num_iterations+1):zero()
+standard_3_MSE_avg_track = torch.Tensor(num_iterations+1):zero()
 for rseed = 1,num_averaging_trials do
 	print("On averaging step: " .. rseed)
 	torch.manualSeed(rseed) --New run! 
@@ -121,6 +123,16 @@ for rseed = 1,num_averaging_trials do
 	standard_ReLU_net:add(nn.ReLU())
 	standard_ReLU_net:add(nn.Linear(HUs, outputs))
 	standard_ReLU_net:add(nn.Tanh())
+
+	--Standard 3-layer ReLU first layer -----------------------------
+	standard_3_net = nn.Sequential();
+	standard_3_net:add(nn.Linear(inputs, HUs))
+	standard_3_net:add(nn.ReLU())
+	standard_3_net:add(nn.Linear(HUs, HUs))
+	standard_3_net:add(nn.Tanh())
+	standard_3_net:add(nn.Linear(HUs, outputs))
+	standard_3_net:add(nn.Tanh())
+
 	--hierarchical net-----------------------------------------------
 	--Count net
 	count_net = nn.Sequential();
@@ -147,49 +159,58 @@ for rseed = 1,num_averaging_trials do
 	hierarchical_sloppy_track = {}
 	standard_track = {}
 	standard_ReLU_track = {}
+	standard_3_track = {}
 	hierarchical_MSE_track = {}
 	hierarchical_sloppy_MSE_track = {}
 	standard_MSE_track = {}
 	standard_ReLU_MSE_track = {}
+	standard_3_MSE_track = {}
 	--pre-training results
 	s1_thresh_error = 0
 	s2_thresh_error = 0
+	s3_thresh_error = 0
 	h_thresh_error = 0
 	hs_thresh_error = 0
 	for i = 1,num_test_points do
 		s1_thresh_error = s1_thresh_error + torch.abs(threshold(standard_net:forward(testset[i][1]))[1]-testset[i][2][1])/2
 		s2_thresh_error = s2_thresh_error + torch.abs(threshold(standard_ReLU_net:forward(testset[i][1]))[1]-testset[i][2][1])/2
+		s3_thresh_error = s3_thresh_error + torch.abs(threshold(standard_3_net:forward(testset[i][1]))[1]-testset[i][2][1])/2
 		local hierarchical_input = torch.Tensor({count_net:forward(testset[i][1])[1],testset[i][1][5]})
 		h_thresh_error = h_thresh_error + torch.abs(threshold(hierarchical_net:forward(hierarchical_input))[1]-testset[i][2][1])/2
 		hs_thresh_error = hs_thresh_error + torch.abs(threshold(hierarchical_sloppy_net:forward(hierarchical_input))[1]-testset[i][2][1])/2
 	end
 	s1_thresh_error = s1_thresh_error/num_test_points
 	s2_thresh_error = s2_thresh_error/num_test_points
+	s3_thresh_error = s3_thresh_error/num_test_points
 	h_thresh_error = h_thresh_error/num_test_points
 	hs_thresh_error = hs_thresh_error/num_test_points
 	standard_track[1] = s1_thresh_error
-	standard_ReLU_track[1] = s1_thresh_error
+	standard_ReLU_track[1] = s2_thresh_error
+	standard_3_track[1] = s3_thresh_error
 	hierarchical_track[1] = h_thresh_error
 	hierarchical_sloppy_track[1] = hs_thresh_error
 
 	s1_MS_error = 0
 	s2_MS_error = 0
+	s3_MS_error = 0
 	h_MS_error = 0
 	hs_MS_error = 0
 	for i = 1,num_test_points do
 		s1_MS_error = s1_MS_error + ((standard_net:forward(testset[i][1]))[1]-testset[i][2][1])^2
 		s2_MS_error = s2_MS_error + ((standard_ReLU_net:forward(testset[i][1]))[1]-testset[i][2][1])^2
+		s3_MS_error = s3_MS_error + ((standard_3_net:forward(testset[i][1]))[1]-testset[i][2][1])^2
 		local hierarchical_input = torch.Tensor({count_net:forward(testset[i][1])[1],testset[i][1][5]})
 		h_MS_error = h_MS_error + ((hierarchical_net:forward(hierarchical_input))[1]-testset[i][2][1])^2
 		hs_MS_error = hs_MS_error + ((hierarchical_sloppy_net:forward(hierarchical_input))[1]-testset[i][2][1])^2
 	end
 	s1_MS_error = s1_MS_error/num_test_points
 	s2_MS_error = s2_MS_error/num_test_points
+	s3_MS_error = s3_MS_error/num_test_points
 	h_MS_error = h_MS_error/num_test_points
 	hs_MS_error = hs_MS_error/num_test_points
-	print(s1_MS_error,s2_MS_error,h_MS_error,hs_MS_error)
 	standard_MSE_track[1] = s1_MS_error
 	standard_ReLU_MSE_track[1] = s2_MS_error
+	standard_3_MSE_track[1] = s3_MS_error
 	hierarchical_MSE_track[1] = h_MS_error
 	hierarchical_sloppy_MSE_track[1] = hs_MS_error
 
@@ -210,6 +231,11 @@ for rseed = 1,num_averaging_trials do
 			standard_ReLU_net:zeroGradParameters()		
 			standard_ReLU_net:backward(trainset[i][1],criterion:backward(standard_ReLU_net.output,trainset[i][2]))
 			standard_ReLU_net:updateParameters(learning_rate)
+			--standard_3
+			criterion:forward(standard_3_net:forward(trainset[i][1]),trainset[i][2])	
+			standard_3_net:zeroGradParameters()		
+			standard_3_net:backward(trainset[i][1],criterion:backward(standard_3_net.output,trainset[i][2]))
+			standard_3_net:updateParameters(learning_rate)
 			--count
 			criterion:forward(count_net:forward(trainset_number[i][1]),trainset_number[i][2])	
 			count_net:zeroGradParameters()		
@@ -232,64 +258,74 @@ for rseed = 1,num_averaging_trials do
 		--Results on this iteration
 		s1_thresh_error = 0
 		s2_thresh_error = 0
+		s3_thresh_error = 0
 		h_thresh_error = 0
 		hs_thresh_error = 0
 		for i = 1,num_test_points do
 			s1_thresh_error = s1_thresh_error + torch.abs(threshold(standard_net:forward(testset[i][1]))[1]-testset[i][2][1])/2
 			s2_thresh_error = s2_thresh_error + torch.abs(threshold(standard_ReLU_net:forward(testset[i][1]))[1]-testset[i][2][1])/2
+			s3_thresh_error = s3_thresh_error + torch.abs(threshold(standard_3_net:forward(testset[i][1]))[1]-testset[i][2][1])/2
 			local hierarchical_input = torch.Tensor({count_net:forward(testset[i][1])[1],testset[i][1][5]})
 			h_thresh_error = h_thresh_error + torch.abs(threshold(hierarchical_net:forward(hierarchical_input))[1]-testset[i][2][1])/2
 			hs_thresh_error = hs_thresh_error + torch.abs(threshold(hierarchical_sloppy_net:forward(hierarchical_input))[1]-testset[i][2][1])/2
 		end
 		s1_thresh_error = s1_thresh_error/num_test_points
 		s2_thresh_error = s2_thresh_error/num_test_points
+		s3_thresh_error = s3_thresh_error/num_test_points
 		h_thresh_error = h_thresh_error/num_test_points
 		hs_thresh_error = hs_thresh_error/num_test_points
 		standard_track[iteration+1] = s1_thresh_error
 		standard_ReLU_track[iteration+1] = s2_thresh_error
+		standard_3_track[iteration+1] = s3_thresh_error
 		hierarchical_track[iteration+1] = h_thresh_error
 		hierarchical_sloppy_track[iteration+1] = hs_thresh_error
 
 		s1_MS_error = 0
 		s2_MS_error = 0
+		s3_MS_error = 0
 		h_MS_error = 0
 		hs_MS_error = 0
 		for i = 1,num_test_points do
 			s1_MS_error = s1_MS_error + ((standard_net:forward(testset[i][1]))[1]-testset[i][2][1])^2
 			s2_MS_error = s2_MS_error + ((standard_ReLU_net:forward(testset[i][1]))[1]-testset[i][2][1])^2
+			s3_MS_error = s3_MS_error + ((standard_3_net:forward(testset[i][1]))[1]-testset[i][2][1])^2
 			local hierarchical_input = torch.Tensor({count_net:forward(testset[i][1])[1],testset[i][1][5]})
 			h_MS_error = h_MS_error + ((hierarchical_net:forward(hierarchical_input))[1]-testset[i][2][1])^2
 			hs_MS_error = hs_MS_error + ((hierarchical_sloppy_net:forward(hierarchical_input))[1]-testset[i][2][1])^2
 		end
 		s1_MS_error = s1_MS_error/num_test_points
 		s2_MS_error = s2_MS_error/num_test_points
+		s3_MS_error = s3_MS_error/num_test_points
 		h_MS_error = h_MS_error/num_test_points
 		hs_MS_error = hs_MS_error/num_test_points
-		print(s1_MS_error,s2_MS_error,h_MS_error,hs_MS_error)
 		standard_MSE_track[iteration+1] = s1_MS_error
 		standard_ReLU_MSE_track[iteration+1] = s2_MS_error
+		standard_3_MSE_track[iteration+1] = s3_MS_error
 		hierarchical_MSE_track[iteration+1] = h_MS_error
 		hierarchical_sloppy_MSE_track[iteration+1] = hs_MS_error
 	end
-	print(hierarchical_avg_track:size(),torch.Tensor(hierarchical_track):size())
 	hierarchical_avg_track = hierarchical_avg_track+torch.Tensor(hierarchical_track)
 	hierarchical_sloppy_avg_track = hierarchical_sloppy_avg_track + torch.Tensor(hierarchical_sloppy_track)
 	standard_avg_track = standard_avg_track + torch.Tensor(standard_track)
 	standard_ReLU_avg_track = standard_ReLU_avg_track + torch.Tensor(standard_ReLU_track)
+	standard_3_avg_track = standard_3_avg_track + torch.Tensor(standard_3_track)
 	hierarchical_MSE_avg_track = hierarchical_MSE_avg_track + torch.Tensor(hierarchical_MSE_track)
 	hierarchical_sloppy_MSE_avg_track = hierarchical_sloppy_MSE_avg_track + torch.Tensor(hierarchical_sloppy_MSE_track)
 	standard_MSE_avg_track = standard_MSE_avg_track + torch.Tensor(standard_MSE_track)
 	standard_ReLU_MSE_avg_track = standard_ReLU_MSE_avg_track + torch.Tensor(standard_ReLU_MSE_track)
+	standard_3_MSE_avg_track = standard_3_MSE_avg_track + torch.Tensor(standard_3_MSE_track)
 end
 
 hierarchical_avg_track = hierarchical_avg_track / num_averaging_trials 
 hierarchical_sloppy_avg_track = hierarchical_sloppy_avg_track  / num_averaging_trials
 standard_avg_track = standard_avg_track / num_averaging_trials
 standard_ReLU_avg_track = standard_ReLU_avg_track / num_averaging_trials
+standard_3_avg_track = standard_3_avg_track / num_averaging_trials
 hierarchical_MSE_avg_track = hierarchical_MSE_avg_track / num_averaging_trials
 hierarchical_sloppy_MSE_avg_track = hierarchical_sloppy_MSE_avg_track / num_averaging_trials
 standard_MSE_avg_track = standard_MSE_avg_track / num_averaging_trials
 standard_ReLU_MSE_avg_track = standard_ReLU_MSE_avg_track / num_averaging_trials
+standard_3_MSE_avg_track = standard_3_MSE_avg_track / num_averaging_trials
 ----Plot results---------------------------------------------
 
 require 'gnuplot'
@@ -297,12 +333,12 @@ require 'gnuplot'
 iterations = torch.linspace(0,num_iterations,num_iterations+1)
 
 gnuplot.pngfigure('error-rate-plot'..output_figure_name)
-gnuplot.plot({'standard',iterations,standard_avg_track},{'standard (1st layer ReLU)',iterations,standard_ReLU_avg_track},{'hierarchical',iterations,hierarchical_avg_track},{'hierarchical (sloppy training)',iterations,hierarchical_sloppy_avg_track})
+gnuplot.plot({'standard',iterations,standard_avg_track},{'standard (1st layer ReLU)',iterations,standard_ReLU_avg_track},{'standard (2 hidden layers)',iterations,standard_3_avg_track},{'hierarchical',iterations,hierarchical_avg_track},{'hierarchical (sloppy training)',iterations,hierarchical_sloppy_avg_track})
 gnuplot.title('Incorrect response rate after thresholding')
 gnuplot.xlabel('Iteration')
 gnuplot.ylabel('Error rate')
 gnuplot.pngfigure('MSE-plot'..output_figure_name)
-gnuplot.plot({'standard',iterations,standard_MSE_avg_track},{'standard (1st layer ReLU)',iterations,standard_ReLU_MSE_avg_track},{'hierarchical',iterations,hierarchical_MSE_avg_track},{'hierarchical (sloppy training)',iterations,hierarchical_sloppy_MSE_avg_track})
+gnuplot.plot({'standard',iterations,standard_MSE_avg_track},{'standard (1st layer ReLU)',iterations,standard_ReLU_MSE_avg_track},{'standard (2 hidden layers)',iterations,standard_3_MSE_avg_track},{'hierarchical',iterations,hierarchical_MSE_avg_track},{'hierarchical (sloppy training)',iterations,hierarchical_sloppy_MSE_avg_track})
 gnuplot.title('Response MSE, w/o thresholding')
 gnuplot.xlabel('Iteration')
 gnuplot.ylabel('MSE')

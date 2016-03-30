@@ -7,7 +7,7 @@ require "nn"
 
 
 --learning parameters
-num_training_points = 256
+num_training_points = 64
 num_iterations = 100
 num_averaging_trials = 100
 initial_learning_rate = 0.01
@@ -335,10 +335,10 @@ iterations = torch.linspace(0,num_iterations,num_iterations+1)
 gnuplot.pngfigure('error-rate-plot'..output_figure_name)
 gnuplot.plot({'standard',iterations,standard_avg_track},{'standard (1st layer ReLU)',iterations,standard_ReLU_avg_track},{'standard (2 hidden layers)',iterations,standard_3_avg_track},{'hierarchical',iterations,hierarchical_avg_track},{'hierarchical (sloppy training)',iterations,hierarchical_sloppy_avg_track})
 gnuplot.title('Incorrect response rate after thresholding')
-gnuplot.xlabel('Iteration')
+gnuplot.xlabel('Epoch')
 gnuplot.ylabel('Error rate')
 gnuplot.pngfigure('MSE-plot'..output_figure_name)
 gnuplot.plot({'standard',iterations,standard_MSE_avg_track},{'standard (1st layer ReLU)',iterations,standard_ReLU_MSE_avg_track},{'standard (2 hidden layers)',iterations,standard_3_MSE_avg_track},{'hierarchical',iterations,hierarchical_MSE_avg_track},{'hierarchical (sloppy training)',iterations,hierarchical_sloppy_MSE_avg_track})
 gnuplot.title('Response MSE, w/o thresholding')
-gnuplot.xlabel('Iteration')
+gnuplot.xlabel('Epoch')
 gnuplot.ylabel('MSE')

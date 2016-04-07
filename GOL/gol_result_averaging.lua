@@ -8,7 +8,7 @@ require "nn"
 
 --learning parameters
 num_training_points = 64
-num_iterations = 100
+num_iterations = 50
 num_averaging_trials = 100
 initial_learning_rate = 0.01
 learning_rate_decay_multiplier = 0.99
@@ -53,6 +53,7 @@ for rseed = 1,num_averaging_trials do
 
 	trainset = {};
 	trainset_number = {};
+	trainset_select = {};
 	hierarchical_trainset = {};
 	testset = {};
 	testset_number = {};
@@ -64,7 +65,9 @@ for rseed = 1,num_averaging_trials do
 		local input = three_square_pm_T(data_order[i])
 		local output = torch.Tensor(1);
 		local output_number = torch.Tensor(1);
+		local output_select = torch.Tensor(1);
 		output_number[1] = torch.sum(input)-input[2][2]
+		output_select[1] = input[2][2] 
 		if output_number[1] > 3 or output_number[1] < 2 then
 			output[1] = -1
 		elseif output_number[1] == 3 then
@@ -75,11 +78,13 @@ for rseed = 1,num_averaging_trials do
 		input = input:reshape(9)
 		trainset[i] = {input, output}
 		trainset_number[i] = {input, output_number}
+		trainset_select[i] = {input, output_select}
 		hierarchical_trainset[i] = {torch.Tensor({output_number[1],input[5]}),output}
 
 	end
 	function trainset:size() return table.getn(trainset) end 
 	function trainset_number:size() return table.getn(trainset_number) end 
+	function trainset_select:size() return table.getn(trainset_select) end 
 	function hierarchical_trainset:size() return table.getn(hierarchical_trainset) end 
 
 
@@ -139,6 +144,11 @@ for rseed = 1,num_averaging_trials do
 	count_net:add(nn.Linear(inputs, outputs))
 	count_net:add(nn.ReLU())
 
+	--select net
+	select_net = nn.Sequential();
+	select_net:add(nn.Linear(inputs, outputs))
+	select_net:add(nn.ReLU())
+
 	--hierarchical_net
 
 	hierarchical_net = nn.Sequential();
@@ -175,7 +185,7 @@ for rseed = 1,num_averaging_trials do
 		s1_thresh_error = s1_thresh_error + torch.abs(threshold(standard_net:forward(testset[i][1]))[1]-testset[i][2][1])/2
 		s2_thresh_error = s2_thresh_error + torch.abs(threshold(standard_ReLU_net:forward(testset[i][1]))[1]-testset[i][2][1])/2
 		s3_thresh_error = s3_thresh_error + torch.abs(threshold(standard_3_net:forward(testset[i][1]))[1]-testset[i][2][1])/2
-		local hierarchical_input = torch.Tensor({count_net:forward(testset[i][1])[1],testset[i][1][5]})
+		local hierarchical_input = torch.Tensor({count_net:forward(testset[i][1])[1],select_net:forward(testset[i][1])[1]})
 		h_thresh_error = h_thresh_error + torch.abs(threshold(hierarchical_net:forward(hierarchical_input))[1]-testset[i][2][1])/2
 		hs_thresh_error = hs_thresh_error + torch.abs(threshold(hierarchical_sloppy_net:forward(hierarchical_input))[1]-testset[i][2][1])/2
 	end
@@ -199,7 +209,7 @@ for rseed = 1,num_averaging_trials do
 		s1_MS_error = s1_MS_error + ((standard_net:forward(testset[i][1]))[1]-testset[i][2][1])^2
 		s2_MS_error = s2_MS_error + ((standard_ReLU_net:forward(testset[i][1]))[1]-testset[i][2][1])^2
 		s3_MS_error = s3_MS_error + ((standard_3_net:forward(testset[i][1]))[1]-testset[i][2][1])^2
-		local hierarchical_input = torch.Tensor({count_net:forward(testset[i][1])[1],testset[i][1][5]})
+		local hierarchical_input =  torch.Tensor({count_net:forward(testset[i][1])[1],select_net:forward(testset[i][1])[1]})
 		h_MS_error = h_MS_error + ((hierarchical_net:forward(hierarchical_input))[1]-testset[i][2][1])^2
 		hs_MS_error = hs_MS_error + ((hierarchical_sloppy_net:forward(hierarchical_input))[1]-testset[i][2][1])^2
 	end
@@ -241,6 +251,11 @@ for rseed = 1,num_averaging_trials do
 			count_net:zeroGradParameters()		
 			count_net:backward(trainset_number[i][1],criterion:backward(count_net.output,trainset_number[i][2]))
 			count_net:updateParameters(learning_rate)
+			--select
+			criterion:forward(select_net:forward(trainset_select[i][1]),trainset_select[i][2])	
+			select_net:zeroGradParameters()		
+			select_net:backward(trainset_select[i][1],criterion:backward(select_net.output,trainset_select[i][2]))
+			select_net:updateParameters(learning_rate)
 			--hierarchical
 			local hierarchical_input = hierarchical_trainset[i][1]
 			criterion:forward(hierarchical_net:forward(hierarchical_input),trainset[i][2])	
@@ -248,7 +263,7 @@ for rseed = 1,num_averaging_trials do
 			hierarchical_net:backward(hierarchical_input,criterion:backward(hierarchical_net.output,trainset[i][2]))
 			hierarchical_net:updateParameters(learning_rate)
 			--hierarchical sloppy
-			local hierarchical_input = torch.Tensor({count_net:forward(trainset[i][1])[1],trainset[i][1][5]})
+			local hierarchical_input = torch.Tensor({count_net:forward(trainset[i][1])[1],select_net:forward(trainset[i][1])[1]})
 			criterion:forward(hierarchical_sloppy_net:forward(hierarchical_input),trainset[i][2])	
 			hierarchical_sloppy_net:zeroGradParameters()		
 			hierarchical_sloppy_net:backward(hierarchical_input,criterion:backward(hierarchical_sloppy_net.output,trainset[i][2]))
@@ -265,7 +280,7 @@ for rseed = 1,num_averaging_trials do
 			s1_thresh_error = s1_thresh_error + torch.abs(threshold(standard_net:forward(testset[i][1]))[1]-testset[i][2][1])/2
 			s2_thresh_error = s2_thresh_error + torch.abs(threshold(standard_ReLU_net:forward(testset[i][1]))[1]-testset[i][2][1])/2
 			s3_thresh_error = s3_thresh_error + torch.abs(threshold(standard_3_net:forward(testset[i][1]))[1]-testset[i][2][1])/2
-			local hierarchical_input = torch.Tensor({count_net:forward(testset[i][1])[1],testset[i][1][5]})
+			local hierarchical_input =  torch.Tensor({count_net:forward(testset[i][1])[1],select_net:forward(testset[i][1])[1]})
 			h_thresh_error = h_thresh_error + torch.abs(threshold(hierarchical_net:forward(hierarchical_input))[1]-testset[i][2][1])/2
 			hs_thresh_error = hs_thresh_error + torch.abs(threshold(hierarchical_sloppy_net:forward(hierarchical_input))[1]-testset[i][2][1])/2
 		end
@@ -289,7 +304,7 @@ for rseed = 1,num_averaging_trials do
 			s1_MS_error = s1_MS_error + ((standard_net:forward(testset[i][1]))[1]-testset[i][2][1])^2
 			s2_MS_error = s2_MS_error + ((standard_ReLU_net:forward(testset[i][1]))[1]-testset[i][2][1])^2
 			s3_MS_error = s3_MS_error + ((standard_3_net:forward(testset[i][1]))[1]-testset[i][2][1])^2
-			local hierarchical_input = torch.Tensor({count_net:forward(testset[i][1])[1],testset[i][1][5]})
+			local hierarchical_input = torch.Tensor({count_net:forward(testset[i][1])[1],select_net:forward(testset[i][1])[1]})
 			h_MS_error = h_MS_error + ((hierarchical_net:forward(hierarchical_input))[1]-testset[i][2][1])^2
 			hs_MS_error = hs_MS_error + ((hierarchical_sloppy_net:forward(hierarchical_input))[1]-testset[i][2][1])^2
 		end

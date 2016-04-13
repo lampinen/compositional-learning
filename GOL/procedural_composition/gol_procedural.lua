@@ -30,10 +30,10 @@ outputs = 1
 --recurrent parameters
 rho = 5 -- sequence length (time backprop cutoff)
 codeSize = 10 -- Codes for the various procedures 
-recurrent_learning_rate = 0.1
+initial_recurrent_learning_rate = 0.1
 
 --miscellaneous
-output_figure_name = '-n-'.. num_training_points .. '-fflrate-' .. initial_learning_rate .. '-rlrate' .. recurrent_learning_rate ..'-ldecay-' .. learning_rate_decay_multiplier .. '.png'
+output_figure_name = '-n-'.. num_training_points .. '-fflrate-' .. initial_learning_rate .. '-rlrate' .. initial_recurrent_learning_rate ..'-ldecay-' .. learning_rate_decay_multiplier .. '.png'
 
 --Helper functions------------------------------------
 
@@ -72,6 +72,7 @@ for rseed = 1,num_averaging_trials do
 	print("On averaging step: " .. rseed)
 	torch.manualSeed(rseed) --New run! 
 	learning_rate = initial_learning_rate
+	recurrent_learning_rate = initial_recurrent_learning_rate
 	--build training data----------------------------------------------
 
 

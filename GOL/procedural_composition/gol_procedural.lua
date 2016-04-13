@@ -13,17 +13,22 @@ require "rnn"
 
 --learning parameters---------------------------
 --data/time parameters
-num_averaging_trials = 1
+num_averaging_trials = 100
 num_iterations = 50
-num_training_points = 256
+num_training_points = 64
 
 --feedforward parameters
 initial_learning_rate = 0.01
 learning_rate_decay_multiplier = 0.99
 
+grid_inputs = 9
+compositional_inputs = 2
+HUs = 10
+outputs = 1
+
+
 --recurrent parameters
 rho = 5 -- sequence length (time backprop cutoff)
-hiddenSize = 10
 codeSize = 10 -- Codes for the various procedures 
 recurrent_learning_rate = 0.1
 
@@ -40,6 +45,10 @@ function threshold(T) --Returns Tensor thresholded at 0 to +/- 1
 	local new_T = T:clone():zero()-1
 	new_T[T:gt(0)] = 1
 	return new_T
+end
+
+function tensor_shallow_eq(S,T)
+	return torch.all(torch.eq(S,T))
 end
 
 function three_square_pm_T(i) -- Returns the ith tensor from the enumeration of all 512 tensors with 9 elements +/- 1
@@ -139,12 +148,6 @@ for rseed = 1,num_averaging_trials do
 
 	--Network training----------------------------------------------------------
 
-	grid_inputs = 9
-	compositional_inputs = 2
-	HUs = 10
-	outputs = 1
-
-
 	--Standard net-------------------------------------------------------
 	standard_net = nn.Sequential();
 	standard_net:add(nn.Linear(grid_inputs, HUs))
@@ -171,14 +174,14 @@ for rseed = 1,num_averaging_trials do
 	--compositional net-----------------------------------------------
 	--procedure net: chooses what to do next
 	local r = nn.Recurrent(
-	   hiddenSize, nn.Linear(codeSize, hiddenSize),
-	   nn.Linear(hiddenSize, hiddenSize), nn.Tanh(),
+	   HUs, nn.Linear(codeSize, HUs),
+	   nn.Linear(HUs, HUs), nn.Tanh(),
 	   rho
 	)  
 	   
 	local rnn = nn.Sequential()
 	   :add(r)
-	   :add(nn.Linear(hiddenSize, hiddenSize))
+	   :add(nn.Linear(HUs, HUs))
 	   :add(nn.Tanh())
 
 	procedure_net = nn.Recursor(rnn, rho)
@@ -199,13 +202,13 @@ for rseed = 1,num_averaging_trials do
 	function compositional_net_forward(compositional_net_input,this_procedure_code) 
 		procedure_net:forget()
 		local procedure_next = threshold(procedure_net:forward(this_procedure_code))
-		while (not torch.eq(procedure_next,RETURN_code)) do 
-			if torch.eq(procedure_next,feature_extraction_code) then
+		while (not tensor_shallow_eq(procedure_next,RETURN_code)) do 
+			if tensor_shallow_eq(procedure_next,feature_extraction_code) then
 				compositional_net_input = feature_net:forward(compositional_net_input)	
-			elseif torch.eq(procedure_next,life_comp_code) then
+			elseif tensor_shallow_eq(procedure_next,life_comp_code) then
 				compositional_net_input = life_comp_net:forward(compositional_net_input)	
 			else --Unknown procedure, let's just skip	
-					
+				break	
 			end
 			procedure_next = threshold(procedure_net:forward(torch.Tensor(codeSize):zero()))
 		end

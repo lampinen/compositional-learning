@@ -15,7 +15,7 @@ require "rnn"
 --data/time parameters
 num_averaging_trials = 100
 num_iterations = 50
-num_training_points = 64
+num_training_points = 256
 
 --feedforward parameters
 initial_learning_rate = 0.01

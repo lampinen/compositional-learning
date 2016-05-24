@@ -15,7 +15,7 @@ require "rnn"
 --data/time parameters
 num_averaging_trials = 100
 num_iterations = 50
-num_training_points = 256
+num_training_points = 64
 
 --feedforward parameters
 initial_learning_rate = 0.01
@@ -89,7 +89,11 @@ for rseed = 1,num_averaging_trials do
 		local output = torch.Tensor(1);
 		local output_number = torch.Tensor(2);
 		output_number[1] = torch.sum(input)-input[2][2]
-		output_number[2] = input[2][2] 
+		if input[2][2] == 1 then 
+			output_number[2] = 1
+		else 
+			output_number[2] = 0
+		end 
 		if output_number[1] > 3 or output_number[1] < 2 then
 			output[1] = -1
 		elseif output_number[1] == 3 then
